@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/ktr0731/grpc-web-go-client/grpcweb/parser"
 	"github.com/ktr0731/grpc-web-go-client/grpcweb/transport"
@@ -17,17 +18,22 @@ import (
 )
 
 type ClientConn struct {
-	host        string
+	baseUri     url.URL
 	dialOptions *dialOptions
 }
 
-func DialContext(host string, opts ...DialOption) (*ClientConn, error) {
+func DialContext(baseUri string, opts ...DialOption) (*ClientConn, error) {
+	parsedUri, err := url.Parse(baseUri)
+	if err != nil {
+		return nil, err
+	}
+
 	opt := defaultDialOptions
 	for _, o := range opts {
 		o(&opt)
 	}
 	return &ClientConn{
-		host:        host,
+		baseUri:     *parsedUri,
 		dialOptions: &opt,
 	}, nil
 }
@@ -36,7 +42,7 @@ func (c *ClientConn) Invoke(ctx context.Context, method string, args, reply inte
 	callOptions := c.applyCallOptions(opts)
 	codec := callOptions.codec
 
-	tr := transport.NewUnary(c.host, nil)
+	tr := transport.NewUnary(c.baseUri, nil)
 	defer tr.Close()
 
 	r, err := encodeRequestBody(codec, args)
@@ -110,7 +116,7 @@ func (c *ClientConn) NewClientStream(desc *grpc.StreamDesc, method string, opts 
 	if !desc.ClientStreams {
 		return nil, errors.New("not a client stream RPC")
 	}
-	tr, err := transport.NewClientStream(c.host, method)
+	tr, err := transport.NewClientStream(c.baseUri, method)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new transport stream")
 	}
@@ -127,7 +133,7 @@ func (c *ClientConn) NewServerStream(desc *grpc.StreamDesc, method string, opts 
 	}
 	return &serverStream{
 		endpoint:    method,
-		transport:   transport.NewUnary(c.host, nil),
+		transport:   transport.NewUnary(c.baseUri, nil),
 		callOptions: c.applyCallOptions(opts),
 	}, nil
 }
